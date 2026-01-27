@@ -33,12 +33,22 @@ def get_game_data_and_push():
         
         for attempt in range(max_retries):
             try:
-                response = curl_cffi.requests.get(
-                    url, 
+                # 先尝试用 requests 库
+                response = requests.get(
+                    url,
                     headers=headers,
-                    impersonate="chrome120", 
                     timeout=15
                 )
+                
+                # 如果 requests 失败，再用 curl_cffi
+                if response.status_code != 200:
+                    response = curl_cffi.requests.get(
+                        url, 
+                        headers=headers,
+                        impersonate="chrome120", 
+                        timeout=15
+                    )
+                
                 response.raise_for_status()
                 json_data = response.json()
                 

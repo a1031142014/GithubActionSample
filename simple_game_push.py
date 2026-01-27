@@ -15,41 +15,58 @@ def get_game_data_and_push():
     """
     获取游戏数据并推送到微信
     """
-    # 1. 获取游戏数据
-    url = "https://api.086378.com/v2/member/accumulation-statistic/?platform=1&group_tag=other&offset=0&limit=20"
+    # 1. 获取代理列表
+    proxy_list_url = "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all.txt"
+    proxies_to_test = []
     
     try:
-        # 使用curl_cffi发送GET请求，模拟Chrome浏览器，添加更多请求头
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-            'Referer': 'https://www.086378.com/',
-        }
-        
-        # 添加重试机制
-        max_retries = 3
-        game_data = []
-        
-        for attempt in range(max_retries):
-            try:
-                # 先尝试用 requests 库
-                response = requests.get(
-                    url,
-                    headers=headers,
-                    timeout=15
-                )
-                
-                # 如果 requests 失败，再用 curl_cffi
-                if response.status_code != 200:
-                    response = curl_cffi.requests.get(
-                        url, 
-                        headers=headers,
-                        impersonate="chrome120", 
-                        timeout=15
-                    )
-                
-                response.raise_for_status()
+        print("正在获取代理列表...")
+        proxy_response = requests.get(proxy_list_url, timeout=10)
+        if proxy_response.status_code == 200:
+            proxy_lines = proxy_response.text.strip().split('\n')
+            proxies_to_test = [line.strip() for line in proxy_lines if line.strip()]
+            print(f"获取到 {len(proxies_to_test)} 个代理")
+    except Exception as e:
+        print(f"获取代理列表失败: {e}")
+    
+    # 添加无代理选项（本地环境可能不需要代理）
+    proxies_to_test.insert(0, None)
+    
+    # 2. 获取游戏数据
+    url = "https://api.086378.com/v2/member/accumulation-statistic/?platform=1&group_tag=other&offset=0&limit=20"
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Referer': 'https://www.086378.com/',
+    }
+    
+    game_data = []
+    success = False
+    
+    # 遍历代理列表尝试获取数据
+    for i, proxy in enumerate(proxies_to_test):
+        if success:
+            break
+            
+        try:
+            if proxy:
+                print(f"尝试代理 {i}/{len(proxies_to_test)}: {proxy[:50]}...")
+                proxies = {'http': proxy, 'https': proxy}
+            else:
+                print("尝试直连（无代理）...")
+                proxies = None
+            
+            response = curl_cffi.requests.get(
+                url, 
+                headers=headers,
+                proxies=proxies,
+                impersonate="chrome120", 
+                timeout=10
+            )
+            
+            if response.status_code == 200:
                 json_data = response.json()
                 
                 # 提取游戏数据
@@ -61,25 +78,28 @@ def get_game_data_and_push():
                         count = result.get("count", 0)
                         leading_play = result.get("leading_play", "")
                         game_data.append(f"{game_name}  {count}({leading_play})")
-                    break  # 成功获取数据，跳出重试循环
                     
-            except Exception as e:
-                print(f"第 {attempt + 1} 次尝试失败: {e}")
-                if attempt < max_retries - 1:
-                    import time
-                    time.sleep(2)  # 等待2秒后重试
-                else:
-                    print("获取游戏数据失败，使用默认数据")
-                    # 如果获取失败，使用默认数据
-                    game_data = [
-                        "数据获取中  0(--)",
-                        "请稍后查看  0(--)",
-                        "系统维护中  0(--)",
-                        "暂无数据  0(--)",
-                        "稍后重试  0(--)"
-                    ]
-        
-        # 2. 获取微信access_token
+                    if game_data:
+                        print(f"成功获取数据！使用的代理: {proxy if proxy else '直连'}")
+                        success = True
+                        break
+                        
+        except Exception as e:
+            # 静默失败，继续尝试下一个代理
+            pass
+    
+    # 如果所有代理都失败，使用默认数据
+    if not success:
+        print("所有代理均失败，使用默认数据")
+        game_data = [
+            "数据获取中  0(--)",
+            "请稍后查看  0(--)",
+            "系统维护中  0(--)",
+            "暂无数据  0(--)",
+            "稍后重试  0(--)"
+        ]
+    
+    try:
         token_url = f'https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={appID}&secret={appSecret}'
         token_response = requests.get(token_url).json()
         access_token = token_response.get('access_token')

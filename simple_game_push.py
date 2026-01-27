@@ -19,7 +19,20 @@ def get_game_data_and_push():
     url = "https://api.086378.com/v2/member/accumulation-statistic/?platform=1&group_tag=other&offset=0&limit=20"
     
     try:
-        response = curl_cffi.requests.get(url, impersonate="chrome110", timeout=10)
+        # 使用curl_cffi发送GET请求，模拟Chrome浏览器，添加更多请求头
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Referer': 'https://www.086378.com/',
+        }
+        
+        response = curl_cffi.requests.get(
+            url, 
+            headers=headers,
+            impersonate="chrome120", 
+            timeout=10
+        )
         response.raise_for_status()
         json_data = response.json()
         

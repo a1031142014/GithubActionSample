@@ -10,7 +10,9 @@ import time
 # 微信公众号配置 - 可以直接填写或使用环境变量
 appID = os.environ.get("APP_ID", "wx06948af05ffacf02")
 appSecret = os.environ.get("APP_SECRET", "68942a7b76350d5c9bcd9b3cfc57e0bd")
-openId = os.environ.get("OPEN_ID", "owzvx2FPYTAZGfb_os0AoZkd4UeY")
+# 支持多个用户ID，用逗号分隔
+openId_str = os.environ.get("OPEN_ID", "owzvx2FPYTAZGfb_os0AoZkd4UeY")
+openIds = [id.strip() for id in openId_str.split(',') if id.strip()]
 template_id = os.environ.get("TEMPLATE_ID", "yiNc0QFCcdBsKuJ48CATDOEg-3k0XD9gWAlQX9dQJSw")
 
 # 亚洲国家代码列表
@@ -222,7 +224,6 @@ def get_game_data_and_push():
         
         # 准备前5个游戏数据，每个作为独立字段
         push_data = {
-            "touser": openId,
             "template_id": template_id,
             "data": {
                 "game1": {"value": game_data[0] if len(game_data) > 0 else "无数据"},
@@ -234,7 +235,7 @@ def get_game_data_and_push():
             }
         }
         
-        # 4. 推送到微信
+        # 4. 推送到微信 - 循环推送给所有用户
         push_url = f'https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={access_token}'
         
         # 设置正确的Content-Type和编码
@@ -242,13 +243,24 @@ def get_game_data_and_push():
             'Content-Type': 'application/json; charset=utf-8'
         }
         
-        result = requests.post(push_url, data=json.dumps(push_data, ensure_ascii=False).encode('utf-8'), headers=headers)
+        print(f"开始推送给 {len(openIds)} 个用户...")
+        success_count = 0
         
-        # 只显示推送结果
-        if '"errcode":0' in result.text:
-            print("推送成功！")
-        else:
-            print(f"推送失败: {result.text}")
+        for idx, openId in enumerate(openIds, 1):
+            # 为每个用户设置touser
+            user_push_data = push_data.copy()
+            user_push_data["touser"] = openId
+            
+            result = requests.post(push_url, data=json.dumps(user_push_data, ensure_ascii=False).encode('utf-8'), headers=headers)
+            
+            # 显示每个用户的推送结果
+            if '"errcode":0' in result.text:
+                print(f"✓ 用户 {idx}/{len(openIds)} 推送成功: {openId[:10]}...")
+                success_count += 1
+            else:
+                print(f"✗ 用户 {idx}/{len(openIds)} 推送失败: {openId[:10]}... - {result.text}")
+        
+        print(f"推送完成！成功: {success_count}/{len(openIds)}")
         
     except Exception as e:
         print(f"操作失败: {e}")

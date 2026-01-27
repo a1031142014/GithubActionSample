@@ -186,9 +186,11 @@ def get_game_data_and_push():
                     
                     for result in results:
                         game_name = result.get("game", {}).get("display_name", "未知游戏")
-                        count = result.get("count", 0)
+                        play_group = result.get("play_group", "")
                         leading_play = result.get("leading_play", "")
-                        game_data.append(f"{game_name}  {count}({leading_play})")
+                        count = result.get("count", 0)
+                        # 格式: display_name : play_group  leading_play  count
+                        game_data.append(f"{game_name}：{play_group}  {leading_play}  {count}")
                     
                     if game_data:
                         print(f"✓ 成功！代理: {proxy[:30]}...")

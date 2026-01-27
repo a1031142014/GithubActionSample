@@ -27,25 +27,47 @@ def get_game_data_and_push():
             'Referer': 'https://www.086378.com/',
         }
         
-        response = curl_cffi.requests.get(
-            url, 
-            headers=headers,
-            impersonate="chrome120", 
-            timeout=10
-        )
-        response.raise_for_status()
-        json_data = response.json()
-        
-        # 提取游戏数据
+        # 添加重试机制
+        max_retries = 3
         game_data = []
-        if "data" in json_data and "results" in json_data["data"]:
-            results = json_data["data"]["results"]
-            
-            for result in results:
-                game_name = result.get("game", {}).get("display_name", "未知游戏")
-                count = result.get("count", 0)
-                leading_play = result.get("leading_play", "")
-                game_data.append(f"{game_name}  {count}({leading_play})")
+        
+        for attempt in range(max_retries):
+            try:
+                response = curl_cffi.requests.get(
+                    url, 
+                    headers=headers,
+                    impersonate="chrome120", 
+                    timeout=15
+                )
+                response.raise_for_status()
+                json_data = response.json()
+                
+                # 提取游戏数据
+                if "data" in json_data and "results" in json_data["data"]:
+                    results = json_data["data"]["results"]
+                    
+                    for result in results:
+                        game_name = result.get("game", {}).get("display_name", "未知游戏")
+                        count = result.get("count", 0)
+                        leading_play = result.get("leading_play", "")
+                        game_data.append(f"{game_name}  {count}({leading_play})")
+                    break  # 成功获取数据，跳出重试循环
+                    
+            except Exception as e:
+                print(f"第 {attempt + 1} 次尝试失败: {e}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2)  # 等待2秒后重试
+                else:
+                    print("获取游戏数据失败，使用默认数据")
+                    # 如果获取失败，使用默认数据
+                    game_data = [
+                        "数据获取中  0(--)",
+                        "请稍后查看  0(--)",
+                        "系统维护中  0(--)",
+                        "暂无数据  0(--)",
+                        "稍后重试  0(--)"
+                    ]
         
         # 2. 获取微信access_token
         token_url = f'https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={appID}&secret={appSecret}'

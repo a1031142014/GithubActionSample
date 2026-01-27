@@ -4,12 +4,54 @@ import requests
 import json
 import curl_cffi.requests
 import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 微信公众号配置 - 可以直接填写或使用环境变量
 appID = os.environ.get("APP_ID", "wx06948af05ffacf02")
 appSecret = os.environ.get("APP_SECRET", "68942a7b76350d5c9bcd9b3cfc57e0bd")
 openId = os.environ.get("OPEN_ID", "owzvx2FPYTAZGfb_os0AoZkd4UeY")
 template_id = os.environ.get("TEMPLATE_ID", "yiNc0QFCcdBsKuJ48CATDOEg-3k0XD9gWAlQX9dQJSw")
+
+def test_proxy_and_fetch(proxy, url, headers):
+    """
+    测试单个代理并尝试获取数据
+    """
+    try:
+        # 处理不同格式的代理
+        if not proxy or not (proxy.startswith('socks5://') or proxy.startswith('socks4://') or 
+                            proxy.startswith('http://') or proxy.startswith('https://')):
+            return None
+        
+        proxies = {'http': proxy, 'https': proxy}
+        
+        response = curl_cffi.requests.get(
+            url, 
+            headers=headers,
+            proxies=proxies,
+            impersonate="chrome120", 
+            timeout=5  # 缩短超时时间到5秒
+        )
+        
+        if response.status_code == 200:
+            json_data = response.json()
+            
+            # 提取游戏数据
+            if "data" in json_data and "results" in json_data["data"]:
+                results = json_data["data"]["results"]
+                game_data = []
+                
+                for result in results:
+                    game_name = result.get("game", {}).get("display_name", "未知游戏")
+                    count = result.get("count", 0)
+                    leading_play = result.get("leading_play", "")
+                    game_data.append(f"{game_name}  {count}({leading_play})")
+                
+                if game_data:
+                    return {'success': True, 'data': game_data, 'proxy': proxy}
+    except:
+        pass
+    
+    return None
 
 def get_game_data_and_push():
     """
@@ -29,10 +71,7 @@ def get_game_data_and_push():
     except Exception as e:
         print(f"获取代理列表失败: {e}")
     
-    # 添加无代理选项（本地环境可能不需要代理）
-    proxies_to_test.insert(0, None)
-    
-    # 2. 获取游戏数据
+    # 2. 并发测试代理获取游戏数据
     url = "https://api.086378.com/v2/member/accumulation-statistic/?platform=1&group_tag=other&offset=0&limit=20"
     
     headers = {
@@ -45,48 +84,27 @@ def get_game_data_and_push():
     game_data = []
     success = False
     
-    # 遍历代理列表尝试获取数据
-    for i, proxy in enumerate(proxies_to_test):
-        if success:
-            break
-            
-        try:
-            if proxy:
-                print(f"尝试代理 {i}/{len(proxies_to_test)}: {proxy[:50]}...")
-                proxies = {'http': proxy, 'https': proxy}
-            else:
-                print("尝试直连（无代理）...")
-                proxies = None
-            
-            response = curl_cffi.requests.get(
-                url, 
-                headers=headers,
-                proxies=proxies,
-                impersonate="chrome120", 
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                json_data = response.json()
-                
-                # 提取游戏数据
-                if "data" in json_data and "results" in json_data["data"]:
-                    results = json_data["data"]["results"]
-                    
-                    for result in results:
-                        game_name = result.get("game", {}).get("display_name", "未知游戏")
-                        count = result.get("count", 0)
-                        leading_play = result.get("leading_play", "")
-                        game_data.append(f"{game_name}  {count}({leading_play})")
-                    
-                    if game_data:
-                        print(f"成功获取数据！使用的代理: {proxy if proxy else '直连'}")
-                        success = True
-                        break
-                        
-        except Exception as e:
-            # 静默失败，继续尝试下一个代理
-            pass
+    print("开始并发测试代理...")
+    
+    # 使用线程池并发测试代理，最多同时测试10个
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        # 提交所有代理测试任务
+        future_to_proxy = {
+            executor.submit(test_proxy_and_fetch, proxy, url, headers): proxy 
+            for proxy in proxies_to_test[:30]  # 只测试前30个代理，加快速度
+        }
+        
+        # 获取第一个成功的结果
+        for future in as_completed(future_to_proxy):
+            result = future.result()
+            if result and result['success']:
+                game_data = result['data']
+                print(f"✓ 成功获取数据！使用代理: {result['proxy']}")
+                success = True
+                # 取消其他未完成的任务
+                for f in future_to_proxy:
+                    f.cancel()
+                break
     
     # 如果所有代理都失败，使用默认数据
     if not success:
